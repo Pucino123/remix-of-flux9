@@ -242,7 +242,7 @@ const DesktopFolder = ({ folder, onOpenModal, dragState, onDragStateChange }: De
         }}
       >
         {/* Background layer */}
-        {folderOpacity > 0.01 ? (
+        {folderOpacity > 0.06 ? (
           <div
             className="absolute inset-0 rounded-2xl"
             style={{
@@ -257,9 +257,9 @@ const DesktopFolder = ({ folder, onOpenModal, dragState, onDragStateChange }: De
                 }
                 return `color-mix(in srgb, ${folderBgColor} ${Math.round(folderOpacity * 100)}%, transparent)`;
               })(),
-              backdropFilter: folderOpacity > 0.05 ? `blur(${Math.round(16 * folderOpacity)}px)` : "none",
-              WebkitBackdropFilter: folderOpacity > 0.05 ? `blur(${Math.round(16 * folderOpacity)}px)` : "none",
-              boxShadow: folderOpacity > 0.05 ? `0 4px 20px rgba(0,0,0,${0.22 * folderOpacity})` : "none",
+              backdropFilter: `blur(${Math.round(16 * folderOpacity)}px)`,
+              WebkitBackdropFilter: `blur(${Math.round(16 * folderOpacity)}px)`,
+              boxShadow: `0 4px 20px rgba(0,0,0,${0.22 * folderOpacity})`,
               pointerEvents: "none",
               willChange: "backdrop-filter, opacity",
             }}
