@@ -152,7 +152,7 @@ const DesktopDocument = ({ doc, onOpen, onDelete, onDuplicate, onRefetch }: Desk
         onClick={(e) => { e.stopPropagation(); if (!didDrag.current) onOpen(doc); }}
         onContextMenu={handleContextMenu}
       >
-        {docOpacity > 0.01 && (
+        {docOpacity > 0.06 && (
           <div className="absolute inset-0 rounded-2xl" style={{
             background: (() => {
               if (!bgColor) return `rgba(22,22,26,${0.65 * docOpacity})`;
@@ -165,9 +165,9 @@ const DesktopDocument = ({ doc, onOpen, onDelete, onDuplicate, onRefetch }: Desk
               }
               return `color-mix(in srgb, ${bgColor} ${Math.round(docOpacity * 100)}%, transparent)`;
             })(),
-            backdropFilter: docOpacity > 0.03 ? `blur(${Math.round(16 * docOpacity)}px)` : "none",
-            WebkitBackdropFilter: docOpacity > 0.03 ? `blur(${Math.round(16 * docOpacity)}px)` : "none",
-            boxShadow: docOpacity > 0.03 ? `0 4px 20px rgba(0,0,0,${0.22 * docOpacity})` : "none",
+            backdropFilter: `blur(${Math.round(16 * docOpacity)}px)`,
+            WebkitBackdropFilter: `blur(${Math.round(16 * docOpacity)}px)`,
+            boxShadow: `0 4px 20px rgba(0,0,0,${0.22 * docOpacity})`,
             pointerEvents: "none" as const,
           }} />
         )}
