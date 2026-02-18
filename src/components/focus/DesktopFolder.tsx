@@ -216,6 +216,10 @@ const DesktopFolder = ({ folder, onOpenModal, dragState, onDragStateChange }: De
           left: pos.x, top: pos.y, width: 90, minHeight: 90,
           zIndex: isDragging ? 999 : selected ? 55 : 45,
           background: "transparent",
+          backdropFilter: folderOpacity <= 0.06 ? "none" : undefined,
+          WebkitBackdropFilter: folderOpacity <= 0.06 ? "none" : undefined,
+          boxShadow: folderOpacity <= 0.06 ? "none" : undefined,
+          border: folderOpacity <= 0.06 ? "none" : undefined,
         }}
         onPointerDown={handlePointerDown}
         onDoubleClick={handleDoubleClick}
