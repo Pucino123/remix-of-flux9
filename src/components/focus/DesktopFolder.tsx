@@ -242,7 +242,7 @@ const DesktopFolder = ({ folder, onOpenModal, dragState, onDragStateChange }: De
         }}
       >
         {/* Background layer */}
-        {folderOpacity > 0 ? (
+        {folderOpacity > 0.01 ? (
           <div
             className="absolute inset-0 rounded-2xl"
             style={{
@@ -257,8 +257,8 @@ const DesktopFolder = ({ folder, onOpenModal, dragState, onDragStateChange }: De
                 }
                 return `color-mix(in srgb, ${folderBgColor} ${Math.round(folderOpacity * 100)}%, transparent)`;
               })(),
-              backdropFilter: folderOpacity > 0 ? `blur(${Math.round(16 * folderOpacity)}px)` : "none",
-              WebkitBackdropFilter: folderOpacity > 0 ? `blur(${Math.round(16 * folderOpacity)}px)` : "none",
+              backdropFilter: folderOpacity > 0.05 ? `blur(${Math.round(16 * folderOpacity)}px)` : "none",
+              WebkitBackdropFilter: folderOpacity > 0.05 ? `blur(${Math.round(16 * folderOpacity)}px)` : "none",
               boxShadow: folderOpacity > 0.05 ? `0 4px 20px rgba(0,0,0,${0.22 * folderOpacity})` : "none",
               pointerEvents: "none",
               willChange: "backdrop-filter, opacity",
@@ -301,7 +301,7 @@ const DesktopFolder = ({ folder, onOpenModal, dragState, onDragStateChange }: De
           <div className="fixed inset-0 z-[9998]" onClick={() => setContextMenu(null)} />
           <div
             className="fixed z-[9999] bg-popover/95 backdrop-blur-xl border border-border rounded-xl shadow-2xl overflow-hidden"
-            style={{ left: Math.min(contextMenu.x, window.innerWidth - 560), top: Math.min(contextMenu.y, window.innerHeight - 500), width: 540 }}
+            style={{ left: Math.min(contextMenu.x + 100, window.innerWidth - 560), top: Math.min(contextMenu.y, window.innerHeight - 500), width: 540 }}
             onPointerDown={(e) => e.stopPropagation()}
           >
             {/* Title slider — top bar */}
