@@ -101,7 +101,7 @@ const DesktopDocument = ({ doc, onOpen, onDelete, onDuplicate, onRefetch }: Desk
 
   const commitRename = async () => {
     if (renameValue.trim() && renameValue.trim() !== doc.title) {
-      await (supabase as any).from("documents").update({ title: renameValue.trim() }).eq("id", doc.id);
+      await supabase.from("documents").update({ title: renameValue.trim() } as any).eq("id", doc.id);
     }
     setRenaming(false);
   };
@@ -109,13 +109,13 @@ const DesktopDocument = ({ doc, onOpen, onDelete, onDuplicate, onRefetch }: Desk
   const handleDelete = async () => {
     setContextMenu(null);
     if (onDelete) onDelete(doc.id);
-    else { await (supabase as any).from("documents").delete().eq("id", doc.id); toast.success("Document deleted"); }
+    else { await supabase.from("documents").delete().eq("id", doc.id); toast.success("Document deleted"); }
   };
 
   const handleDuplicate = async () => {
     setContextMenu(null);
     if (onDuplicate) { onDuplicate(doc); return; }
-    const { error } = await (supabase as any).from("documents").insert({ title: `${doc.title} (copy)`, type: doc.type, content: doc.content, user_id: doc.user_id, folder_id: null });
+    const { error } = await supabase.from("documents").insert({ title: `${doc.title} (copy)`, type: doc.type, content: doc.content, user_id: doc.user_id, folder_id: null } as any);
     if (!error) { toast.success("Document duplicated"); }
   };
 
@@ -382,3 +382,4 @@ const DesktopDocument = ({ doc, onOpen, onDelete, onDuplicate, onRefetch }: Desk
 };
 
 export default memo(DesktopDocument);
+
