@@ -147,7 +147,7 @@ const DesktopDocument = ({ doc, onOpen, onDelete, onDuplicate, onRefetch }: Desk
     <>
       <div
         className="desktop-folder absolute flex flex-col items-center justify-center gap-0 p-2 pb-1 cursor-pointer select-none rounded-2xl group"
-        style={{ left: pos.x, top: pos.y, width: 90, minHeight: 90, zIndex: 45 }}
+        style={{ left: pos.x, top: pos.y, width: 90, minHeight: 90, zIndex: 45, background: "transparent", backdropFilter: docOpacity <= 0.06 ? "none" : undefined, WebkitBackdropFilter: docOpacity <= 0.06 ? "none" : undefined, boxShadow: docOpacity <= 0.06 ? "none" : undefined, border: docOpacity <= 0.06 ? "none" : undefined }}
         onPointerDown={handlePointerDown}
         onClick={(e) => { e.stopPropagation(); if (!didDrag.current) onOpen(doc); }}
         onContextMenu={handleContextMenu}
