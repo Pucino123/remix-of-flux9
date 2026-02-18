@@ -204,7 +204,7 @@ const DesktopDocument = ({ doc, onOpen, onDelete, onDuplicate, onRefetch }: Desk
           <div className="fixed inset-0 z-[9998]" onClick={() => setContextMenu(null)} />
           <div
             className="fixed z-[9999] bg-popover/95 backdrop-blur-xl border border-border rounded-xl shadow-2xl overflow-hidden"
-            style={{ left: Math.min(contextMenu.x, window.innerWidth - 540), top: Math.min(contextMenu.y, window.innerHeight - 420), width: 520 }}
+            style={{ left: Math.min(contextMenu.x + 100, window.innerWidth - 540), top: Math.min(contextMenu.y, window.innerHeight - 420), width: 520 }}
             onPointerDown={(e) => e.stopPropagation()}
           >
             <div className="px-4 py-2.5 border-b border-border/30 flex items-center gap-3">
