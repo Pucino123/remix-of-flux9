@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  X, MoreHorizontal, Pencil, Trash2, Copy, FolderPlus, FileText, Table,
+  X, FolderPlus, FileText, Table,
   ChevronRight, LayoutGrid, List, Folder, ArrowLeft, Search, SlidersHorizontal,
-  Sparkles,
+  Sparkles, Sun, Moon,
 } from "lucide-react";
 import { useFlux, FolderNode } from "@/context/FluxContext";
 import { useDocuments, DbDocument } from "@/hooks/useDocuments";
@@ -13,18 +13,8 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import FolderContents from "./FolderContents";
 import FolderTemplateSelector from "./FolderTemplateSelector";
 import DocumentView from "@/components/documents/DocumentView";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-
-const FOLDER_COLORS = [
-  { name: "Blue", value: "hsl(var(--aurora-blue))" },
-  { name: "Violet", value: "hsl(var(--aurora-violet))" },
-  { name: "Pink", value: "hsl(var(--aurora-pink))" },
-  { name: "Green", value: "hsl(150 60% 45%)" },
-  { name: "Orange", value: "hsl(30 90% 55%)" },
-  { name: "Teal", value: "hsl(175 60% 42%)" },
-  { name: "Red", value: "hsl(0 72% 55%)" },
-  { name: "Amber", value: "hsl(45 93% 50%)" },
-];
 
 type FilterChip = "all" | "folders" | "documents";
 type SortMode = "name" | "date" | "type";
@@ -35,15 +25,17 @@ interface FolderModalProps {
 }
 
 const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
-  const { findFolderNode, updateFolder, removeFolder, createFolder, moveFolder } = useFlux();
+  const { findFolderNode, updateFolder, removeFolder, createFolder, moveFolder, createBlock, folderTree } = useFlux();
 
   const [navStack, setNavStack] = useState<string[]>([folderId]);
   const [direction, setDirection] = useState<1 | -1>(1);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState("");
-  const [menuOpen, setMenuOpen] = useState(false);
+
   const [openDocument, setOpenDocument] = useState<DbDocument | null>(null);
+  const [renamingDoc, setRenamingDoc] = useState(false);
+  const [renameDocValue, setRenameDocValue] = useState("");
 
   // Search & filter state
   const [searchQuery, setSearchQuery] = useState("");
@@ -51,6 +43,9 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
   const [sortMode, setSortMode] = useState<SortMode>("name");
   const [showSort, setShowSort] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [folderLightMode, setFolderLightMode] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const modalRef = useRef<HTMLDivElement>(null);
 
   const currentFolderId = navStack[navStack.length - 1];
   const currentFolder = findFolderNode(currentFolderId);
@@ -110,7 +105,6 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose, openDocument, searchQuery]);
 
-  // Clear search when navigating
   const drillIn = useCallback((childId: string) => {
     setDirection(1);
     setNavStack((prev) => [...prev, childId]);
@@ -138,6 +132,14 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
     setRenaming(false);
   };
 
+  const commitDocRename = () => {
+    if (openDocument && renameDocValue.trim() && renameDocValue.trim() !== openDocument.title) {
+      updateDocument(openDocument.id, { title: renameDocValue.trim() });
+      setOpenDocument((prev) => prev ? { ...prev, title: renameDocValue.trim() } : null);
+    }
+    setRenamingDoc(false);
+  };
+
   const handleCreateSubfolder = async () => {
     await createFolder({ parent_id: currentFolderId, title: "New Folder", type: "folder" });
   };
@@ -151,24 +153,7 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
       updateDocument(doc.id, { content });
     }
   };
-  const handleDuplicate = async () => {
-    if (!currentFolder) return;
-    setMenuOpen(false);
-    await createFolder({
-      parent_id: currentFolder.parent_id,
-      title: `${currentFolder.title} (Copy)`,
-      type: currentFolder.type,
-      color: currentFolder.color || undefined,
-      icon: currentFolder.icon || undefined,
-    });
-    toast.success("Folder duplicated");
-  };
-  const handleDelete = async () => {
-    setMenuOpen(false);
-    await removeFolder(currentFolderId);
-    toast.success("Folder deleted");
-    onClose();
-  };
+
   const handleOpenDocument = (doc: DbDocument) => {
     setOpenDocument(doc);
   };
@@ -182,8 +167,6 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
   const customIcon = currentFolder.icon ? FOLDER_ICONS.find((i) => i.name === currentFolder.icon) : null;
   const IconComp = customIcon ? customIcon.icon : Folder;
   const iconColor = currentFolder.color || "hsl(var(--muted-foreground))";
-
-  const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   return createPortal(
     <AnimatePresence>
@@ -205,12 +188,27 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
         className="fixed inset-0 z-[101] flex items-center justify-center p-4 pointer-events-none"
       >
         <div
-          className="relative w-full max-w-4xl max-h-[85vh] flex flex-col bg-card/80 backdrop-blur-2xl border border-border/50 rounded-2xl shadow-2xl pointer-events-auto overflow-hidden"
+          ref={modalRef}
+          className={`relative w-full max-w-4xl max-h-[85vh] flex flex-col backdrop-blur-2xl border rounded-2xl shadow-2xl pointer-events-auto overflow-hidden transition-colors duration-300 ${
+            folderLightMode
+              ? "bg-white/95 border-gray-200/60 text-gray-900"
+              : "bg-card/80 border-border/50"
+          }`}
           onClick={(e) => e.stopPropagation()}
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes("modal-folder-id")) {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          }}
+          onDrop={(e) => {
+            if (e.dataTransfer.types.includes("modal-folder-id")) {
+              e.stopPropagation();
+            }
+          }}
         >
           {/* Header */}
           <div className="flex items-center gap-3 px-5 pt-5 pb-3">
-            {/* Back button for subfolder navigation or document */}
             {(navStack.length > 1 || openDocument) && !renaming && (
               <button
                 onClick={() => {
@@ -220,24 +218,38 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
                     navigateTo(navStack.length - 2);
                   }
                 }}
-                className="p-2 rounded-lg hover:bg-secondary/60 transition-colors text-muted-foreground hover:text-foreground"
+                className={`p-2 rounded-lg transition-colors ${folderLightMode ? "text-gray-500 hover:bg-gray-100 hover:text-gray-800" : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"}`}
               >
                 <ArrowLeft size={16} />
               </button>
             )}
 
             {openDocument ? (
-              <>
-
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  {openDocument.type === "text" ? (
-                    <FileText size={18} className="text-blue-400 shrink-0" />
-                  ) : (
-                    <Table size={18} className="text-emerald-500 shrink-0" />
-                  )}
-                  <span className="text-lg font-semibold text-foreground truncate">{openDocument.title}</span>
-                </div>
-              </>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                {openDocument.type === "text" ? (
+                  <FileText size={18} className="text-blue-400 shrink-0" />
+                ) : (
+                  <Table size={18} className="text-emerald-500 shrink-0" />
+                )}
+                {renamingDoc ? (
+                  <input
+                    value={renameDocValue}
+                    onChange={(e) => setRenameDocValue(e.target.value)}
+                    onBlur={() => commitDocRename()}
+                    onKeyDown={(e) => { if (e.key === "Enter") commitDocRename(); if (e.key === "Escape") setRenamingDoc(false); }}
+                    className={`flex-1 text-lg font-semibold bg-transparent border-b-2 border-primary/40 outline-none ${folderLightMode ? "text-gray-900" : "text-foreground"}`}
+                    autoFocus
+                  />
+                ) : (
+                  <span
+                    className={`text-lg font-semibold truncate cursor-pointer transition-colors ${folderLightMode ? "text-gray-900 hover:text-primary" : "text-foreground hover:text-primary"}`}
+                    onClick={() => { setRenameDocValue(openDocument.title); setRenamingDoc(true); }}
+                    title="Click to rename"
+                  >
+                    {openDocument.title}
+                  </span>
+                )}
+              </div>
             ) : (
               <>
                 <div
@@ -256,12 +268,12 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
                         if (e.key === "Enter") commitRename();
                         if (e.key === "Escape") setRenaming(false);
                       }}
-                      className="w-full text-lg font-semibold bg-transparent border-b-2 border-primary/40 outline-none text-foreground"
+                      className={`w-full text-lg font-semibold bg-transparent border-b-2 border-primary/40 outline-none ${folderLightMode ? "text-gray-900" : "text-foreground"}`}
                       autoFocus
                     />
                   ) : (
                     <h2
-                      className="text-lg font-semibold text-foreground truncate cursor-pointer hover:text-primary transition-colors"
+                      className={`text-lg font-semibold truncate cursor-pointer transition-colors ${folderLightMode ? "text-gray-900 hover:text-primary" : "text-foreground hover:text-primary"}`}
                       onClick={startRename}
                       title="Click to rename"
                     >
@@ -270,83 +282,25 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
                   )}
                 </div>
                 <button
+                  onClick={() => setFolderLightMode(!folderLightMode)}
+                  className={`p-2 rounded-lg transition-colors ${folderLightMode ? "hover:bg-gray-100 text-gray-500 hover:text-gray-700" : "hover:bg-secondary/60 text-muted-foreground hover:text-foreground"}`}
+                  title={folderLightMode ? "Dark mode" : "Light mode"}
+                >
+                  {folderLightMode ? <Moon size={16} /> : <Sun size={16} />}
+                </button>
+                <button
                   onClick={() => setViewMode(viewMode === "grid" ? "list" : "grid")}
-                  className="p-2 rounded-lg hover:bg-secondary/60 transition-colors text-muted-foreground hover:text-foreground"
+                  className={`p-2 rounded-lg transition-colors ${folderLightMode ? "hover:bg-gray-100 text-gray-500 hover:text-gray-700" : "hover:bg-secondary/60 text-muted-foreground hover:text-foreground"}`}
                   title={viewMode === "grid" ? "List view" : "Grid view"}
                 >
                   {viewMode === "grid" ? <List size={16} /> : <LayoutGrid size={16} />}
                 </button>
-                <Popover open={menuOpen} onOpenChange={setMenuOpen}>
-                  <PopoverTrigger asChild>
-                    <button className="p-2 rounded-lg hover:bg-secondary/60 transition-colors text-muted-foreground hover:text-foreground">
-                      <MoreHorizontal size={16} />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" className="w-52 p-1.5 z-[200]" sideOffset={4}>
-                    <button
-                      onClick={() => { setMenuOpen(false); startRename(); }}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg hover:bg-secondary transition-colors"
-                    >
-                      <Pencil size={14} className="text-muted-foreground" /> Rename
-                    </button>
-                    <div className="px-3 py-2">
-                      <p className="text-[11px] font-medium text-muted-foreground mb-2 uppercase tracking-wider">Color</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {FOLDER_COLORS.map((c) => (
-                          <button
-                            key={c.name}
-                            onClick={() => updateFolder(currentFolderId, { color: c.value })}
-                            className={`w-5 h-5 rounded-full border-2 transition-all duration-150 hover:scale-125 ${
-                              currentFolder.color === c.value ? "border-foreground/40 scale-110" : "border-transparent"
-                            }`}
-                            style={{ backgroundColor: c.value }}
-                            title={c.name}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                    <div className="px-3 py-2">
-                      <p className="text-[11px] font-medium text-muted-foreground mb-2 uppercase tracking-wider">Icon</p>
-                      <div className="grid grid-cols-8 gap-1">
-                        {FOLDER_ICONS.slice(0, 24).map((item) => {
-                          const IC = item.icon;
-                          const isActive = currentFolder.icon === item.name;
-                          return (
-                            <button
-                              key={item.name}
-                              onClick={() => updateFolder(currentFolderId, { icon: item.name })}
-                              className={`p-1 rounded-md transition-all hover:scale-110 ${
-                                isActive ? "bg-primary/15" : "hover:bg-secondary/60"
-                              }`}
-                              title={item.name}
-                            >
-                              <IC size={14} className={isActive ? "text-primary" : "text-muted-foreground"} />
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div className="h-px bg-border mx-2 my-1" />
-                    <button
-                      onClick={handleDuplicate}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg hover:bg-secondary transition-colors"
-                    >
-                      <Copy size={14} className="text-muted-foreground" /> Duplicate
-                    </button>
-                    <button
-                      onClick={handleDelete}
-                      className="w-full flex items-center gap-2.5 px-3 py-2 text-sm rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
-                    >
-                      <Trash2 size={14} /> Delete
-                    </button>
-                  </PopoverContent>
-                </Popover>
               </>
             )}
 
             <button
               onClick={onClose}
-              className="p-2 rounded-lg hover:bg-secondary/60 transition-colors text-muted-foreground hover:text-foreground"
+              className={`p-2 rounded-lg transition-colors ${folderLightMode ? "text-gray-500 hover:bg-gray-100 hover:text-gray-800" : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"}`}
             >
               <X size={16} />
             </button>
@@ -354,16 +308,16 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
 
           {/* Breadcrumb */}
           {!openDocument && breadcrumbs.length > 1 && (
-            <div className="flex items-center gap-1 px-5 pb-2 text-xs text-muted-foreground overflow-x-auto">
+            <div className={`flex items-center gap-1 px-5 pb-2 text-xs overflow-x-auto ${folderLightMode ? "text-gray-500" : "text-muted-foreground"}`}>
               {breadcrumbs.map((crumb, i) => (
                 <React.Fragment key={crumb.id}>
                   {i > 0 && <ChevronRight size={12} className="shrink-0 opacity-40" />}
                   {i < breadcrumbs.length - 1 ? (
-                    <button onClick={() => navigateTo(i)} className="hover:text-foreground transition-colors truncate max-w-[120px]">
+                    <button onClick={() => navigateTo(i)} className={`transition-colors truncate max-w-[120px] ${folderLightMode ? "hover:text-gray-800" : "hover:text-foreground"}`}>
                       {crumb.title}
                     </button>
                   ) : (
-                    <span className="text-foreground font-medium truncate max-w-[120px]">{crumb.title}</span>
+                    <span className={`font-medium truncate max-w-[120px] ${folderLightMode ? "text-gray-900" : "text-foreground"}`}>{crumb.title}</span>
                   )}
                 </React.Fragment>
               ))}
@@ -373,16 +327,19 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
           {/* Search bar + filter chips + create actions */}
           {!openDocument && (
             <div className="px-5 pb-3 space-y-2.5">
-              {/* Search */}
               <div className="relative">
-                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+                <Search size={14} className={`absolute left-3 top-1/2 -translate-y-1/2 ${folderLightMode ? "text-gray-400" : "text-muted-foreground/50"}`} />
                 <input
                   ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Search folders & documents..."
-                  className="w-full h-9 pl-9 pr-3 rounded-xl bg-secondary/40 border border-border/30 text-sm text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 transition-all"
+                  className={`w-full h-9 pl-9 pr-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/30 transition-all ${
+                    folderLightMode
+                      ? "bg-gray-100 border border-gray-200 text-gray-900 placeholder:text-gray-400"
+                      : "bg-secondary/40 border border-border/30 text-foreground placeholder:text-muted-foreground/50"
+                  }`}
                 />
                 {searchQuery && (
                   <button
@@ -394,7 +351,6 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
                 )}
               </div>
 
-              {/* Filter chips + sort + create actions */}
               <div className="flex items-center gap-2 flex-wrap">
                 {(["all", "folders", "documents"] as FilterChip[]).map((chip) => (
                   <button
@@ -403,7 +359,9 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
                     className={`px-2.5 py-1 text-[11px] font-medium rounded-lg transition-all ${
                       filterChip === chip
                         ? "bg-primary/15 text-primary"
-                        : "bg-secondary/40 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+                        : folderLightMode
+                          ? "bg-gray-100 text-gray-600 hover:bg-gray-200 hover:text-gray-800"
+                          : "bg-secondary/40 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                     }`}
                   >
                     {chip === "all" ? "All" : chip === "folders" ? "Folders" : "Documents"}
@@ -412,7 +370,7 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
 
                 <Popover open={showSort} onOpenChange={setShowSort}>
                   <PopoverTrigger asChild>
-                    <button className="p-1.5 rounded-lg hover:bg-secondary/60 transition-colors text-muted-foreground hover:text-foreground">
+                    <button className={`p-1.5 rounded-lg transition-colors ${folderLightMode ? "text-gray-500 hover:bg-gray-100 hover:text-gray-700" : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"}`}>
                       <SlidersHorizontal size={13} />
                     </button>
                   </PopoverTrigger>
@@ -435,19 +393,19 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
 
                 <button
                   onClick={handleCreateSubfolder}
-                  className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg transition-colors ${folderLightMode ? "bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800" : "bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground"}`}
                 >
                   <FolderPlus size={12} /> Folder
                 </button>
                 <button
                   onClick={() => handleCreateDocument("text")}
-                  className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg transition-colors ${folderLightMode ? "bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800" : "bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground"}`}
                 >
                   <FileText size={12} /> Doc
                 </button>
                 <button
                   onClick={() => handleCreateDocument("spreadsheet")}
-                  className="flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded-lg transition-colors ${folderLightMode ? "bg-gray-100 hover:bg-gray-200 text-gray-600 hover:text-gray-800" : "bg-secondary/50 hover:bg-secondary text-muted-foreground hover:text-foreground"}`}
                 >
                   <Table size={12} /> Sheet
                 </button>
@@ -476,6 +434,7 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
                     removeDocument(id);
                     setOpenDocument(null);
                   }}
+                  lightMode={folderLightMode}
                 />
               </div>
             ) : (
@@ -493,18 +452,89 @@ const FolderModal = ({ folderId, onClose }: FolderModalProps) => {
                     loading={docsLoading}
                     viewMode={viewMode}
                     searchQuery={searchQuery}
+                    lightMode={folderLightMode}
+                    modalRef={modalRef as React.RefObject<HTMLDivElement>}
                     onOpenSubfolder={drillIn}
                     onOpenDocument={handleOpenDocument}
                     onCreateFolder={handleCreateSubfolder}
                     onCreateDocument={handleCreateDocument}
                     onMoveFolder={handleMoveFolder}
+                    onDragOutDocument={async (doc) => {
+                      await (supabase as any).from("documents").update({ folder_id: null }).eq("id", doc.id);
+                      toast.success("Document moved to desktop");
+                    }}
+                    onRenameFolder={(id) => {
+                      const node = findFolderNode(id);
+                      if (node) {
+                        const newName = prompt("Rename folder:", node.title);
+                        if (newName?.trim()) updateFolder(id, { title: newName.trim() });
+                      }
+                    }}
+                    onDeleteFolder={(id) => {
+                      removeFolder(id);
+                      toast.success("Folder deleted");
+                    }}
+                    onDuplicateFolder={(id) => {
+                      const node = findFolderNode(id);
+                      if (node) {
+                        createFolder({
+                          parent_id: node.parent_id,
+                          title: `${node.title} (Copy)`,
+                          type: node.type,
+                          color: node.color || undefined,
+                          icon: node.icon || undefined,
+                        });
+                        toast.success("Folder duplicated");
+                      }
+                    }}
+                    onDeleteDocument={(id) => {
+                      removeDocument(id);
+                      toast.success("Document deleted");
+                    }}
+                    onDuplicateDocument={(doc) => {
+                      createDocument(doc.title + " (Copy)", doc.type as "text" | "spreadsheet", currentFolderId).then((newDoc) => {
+                        if (newDoc && doc.content) {
+                          updateDocument(newDoc.id, { content: doc.content });
+                        }
+                      });
+                      toast.success("Document duplicated");
+                    }}
+                    onAddToCalendar={(doc, date, time) => {
+                      createBlock({
+                        title: doc.title,
+                        time,
+                        scheduled_date: date.toISOString().split("T")[0],
+                        type: "task",
+                        duration: "60m",
+                      });
+                      toast.success("Added to calendar");
+                    }}
+                    onMoveDocToFolder={async (doc, folderId) => {
+                      if (folderId === "desktop") {
+                        await (supabase as any).from("documents").update({ folder_id: null }).eq("id", doc.id);
+                        toast.success("Moved to desktop");
+                      } else {
+                        await (supabase as any).from("documents").update({ folder_id: folderId }).eq("id", doc.id);
+                        const targetFolder = findFolderNode(folderId);
+                        toast.success(`Moved to ${targetFolder?.title || "folder"}`);
+                      }
+                    }}
+                    onShareDocument={(doc) => {
+                      navigator.clipboard.writeText(`${doc.title} — shared from Flux`);
+                      toast.success("Link copied to clipboard");
+                    }}
+                    allFolders={folderTree}
+                    currentFolderId={currentFolderId}
+                    onUpdateFolder={(id, updates) => {
+                      updateFolder(id, updates);
+                    }}
                   />
                 </motion.div>
               </AnimatePresence>
             )}
           </div>
 
-          {/* Template selector - full modal overlay */}
+          {/* Template selector */}
           <FolderTemplateSelector
             open={showTemplates}
             onClose={() => setShowTemplates(false)}
