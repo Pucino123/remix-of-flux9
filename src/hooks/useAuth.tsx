@@ -19,16 +19,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (session) {
-        setSession(session);
-        setUser(session.user);
+    const ensureSession = async () => {
+      const { data: { session: existing } } = await supabase.auth.getSession();
+      if (existing) {
+        setSession(existing);
+        setUser(existing.user);
         setLoading(false);
       } else {
         // Auto sign-in anonymously so CRUD operations work without a login page
@@ -39,7 +34,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         setLoading(false);
       }
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === "TOKEN_REFRESHED" || event === "SIGNED_IN") {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      } else if (event === "SIGNED_OUT" || !session) {
+        // Session expired — re-authenticate anonymously
+        const { data, error } = await supabase.auth.signInAnonymously();
+        if (!error && data.session) {
+          setSession(data.session);
+          setUser(data.session.user);
+        }
+      } else {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
     });
+
+    ensureSession();
 
     return () => subscription.unsubscribe();
   }, []);
