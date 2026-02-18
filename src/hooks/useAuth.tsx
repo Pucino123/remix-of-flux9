@@ -20,6 +20,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const ensureSession = async () => {
+      // First try to refresh any existing session to get a fresh JWT
+      const { data: { session: refreshed }, error: refreshError } = await supabase.auth.refreshSession();
+      if (!refreshError && refreshed) {
+        setSession(refreshed);
+        setUser(refreshed.user);
+        setLoading(false);
+        return;
+      }
+      // No valid session — fall back to checking or creating anonymous
       const { data: { session: existing } } = await supabase.auth.getSession();
       if (existing) {
         setSession(existing);
